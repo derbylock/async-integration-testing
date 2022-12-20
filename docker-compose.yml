@@ -1,0 +1,31 @@
+version: "3.3"
+services:
+  async-integration-testing-db:
+    image: redis:7.0.7-alpine
+    restart: always
+    ports:
+      - '6379:6379'
+    command: redis-server --save 1 1 --loglevel warning --requirepass 54ae6636-c72f-4b61-8509-30761b03c714
+    volumes: 
+      - redisdb:/redisdb
+  async-integration-testing-service:
+    build: .
+    container_name: async-integration-testing-service
+    depends_on:
+      - "async-integration-testing-db"
+    entrypoint: /root/app
+    environment:
+      REDIS_ADDRS: "async-integration-testing-db:6379"
+      REDIS_PASSWORD: 54ae6636-c72f-4b61-8509-30761b03c714
+      REVISION: "dev"
+    ports:
+      - "9580:9580"
+    deploy:
+      resources:
+        limits:
+          memory: 500M
+        reservations:
+          memory: 100M 
+volumes:
+  redisdb:
+    driver: local

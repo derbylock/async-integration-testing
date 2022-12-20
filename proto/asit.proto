@@ -1,0 +1,97 @@
+syntax = "proto3";
+package asit;
+option go_package = "/;asit";
+
+import "google/protobuf/timestamp.proto";
+
+message ClientList {
+  repeated Client clients = 1;
+}
+
+message Client {
+  string id = 1;
+  string name = 2;
+  google.protobuf.Timestamp last_updated = 3;
+  map<string, string> clientproperties = 4;
+}
+
+message TestCase {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated TestStep steps = 4;
+}
+
+message TestSuite {
+  string id = 1;
+  string name = 2;
+  string description = 3; 
+  repeated TestCase tests = 4;
+}
+
+message TestStep {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  TestAction action = 4;
+  TestVerification verification = 5;
+}
+
+message TestAction {
+  string function = 1;
+  map<string, string> arguments = 2;
+}
+
+message TestCheck {
+  string function = 1;
+  map<string, string> arguments = 2;
+}
+
+message TestVerification {
+  repeated TestCheck checks = 1;
+}
+
+message TestRun {
+  string id = 1;
+  string testSuiteId = 2;
+  TestRunStatus status = 3;
+  TestState state = 4;
+  string statusDescription = 5;
+  google.protobuf.Timestamp last_updated = 6;
+}
+
+enum TestRunStatus {
+  STARTED = 0;
+  SUCCESS = 1;
+  FAIL = 2;
+}
+
+enum TestStepRunStatus {
+  CREATED = 0;
+  ACTIVE = 1;
+  ACTION_STARTED = 3;
+  ACTION_FINISHED = 4;
+  ACTION_FAILED = 5;
+  VERIFICATION_SUCCESS = 6;
+  VERIFICATION_FAILED = 7;
+}
+
+message TestStepRun {
+  string testStepId = 1;
+  TestStepRunStatus status = 2;
+  repeated string logs = 3;
+  string statusDescription = 4;
+  map<string, string> data = 5;
+}
+
+message TestState {
+  int32 currentStepIndex = 1;
+  map<string, string> clientproperties = 2;
+  repeated TestStepRun stepRuns = 3;
+  map<string, string> data = 4;
+}
+
+// Just consistance-supporting structures for KV storage messages
+message ClientKeys {
+  repeated string keys = 1;
+}
