@@ -100,6 +100,14 @@ func (e *NonUniqueClientKeyError) Error() string {
 	return fmt.Sprintf("non-unique client key %s", e.key)
 }
 
+type NotFoundClientByIdError struct {
+	id string
+}
+
+func (e *NotFoundClientByIdError) Error() string {
+	return fmt.Sprintf("not found client with id %s", e.id)
+}
+
 func (r *KVClientsRepository) AddClientKey(ctx context.Context, clientId string, key string) error {
 	client := &asit.Client{}
 	err := r.storage.SetAndDeleteAtomically(ctx, []SetValueCommand{
@@ -107,8 +115,11 @@ func (r *KVClientsRepository) AddClientKey(ctx context.Context, clientId string,
 			key: KEY_CLIENT_PREFIX + clientId,
 			updater: func(oldValue func(proto.Message) (bool, error)) (bool, proto.Message, error) {
 				found, err := oldValue(client)
-				if err != nil || !found {
+				if err != nil {
 					return false, nil, err
+				}
+				if !found {
+					return false, nil, &NotFoundClientByIdError{id: clientId}
 				}
 				// keep old value
 				return false, client, nil
@@ -202,13 +213,15 @@ func (r *KVClientsRepository) SetClient(ctx context.Context, client *asit.Client
 		{
 			key: KEY_ALL_CLIENTS,
 			updater: func(oldValue func(proto.Message) (bool, error)) (bool, proto.Message, error) {
+				clientHead := proto.Clone(client).(*asit.Client)
+				clientHead.ClientProperties = nil
 				clientList := &asit.ClientList{}
 				found, err := oldValue(clientList)
 				if err != nil {
 					return false, nil, err
 				}
 				if !found {
-					return true, &asit.ClientList{Clients: []*asit.Client{client}}, nil
+					return true, &asit.ClientList{Clients: []*asit.Client{clientHead}}, nil
 				}
 				// filter slice, remove client with the specified Id if it exists
 				newClients := clientList.Clients
@@ -222,9 +235,9 @@ func (r *KVClientsRepository) SetClient(ctx context.Context, client *asit.Client
 
 				if indexFound < 0 {
 					client.LastUpdated = timestamppb.New(time.Now())
-					newClients = append(newClients, client)
+					newClients = append(newClients, clientHead)
 				} else {
-					newClients[indexFound].ClientProperties = client.ClientProperties
+					newClients[indexFound].ClientProperties = nil
 					newClients[indexFound].LastUpdated = timestamppb.New(time.Now())
 				}
 				return true, &asit.ClientList{Clients: newClients}, nil
@@ -316,7 +329,11 @@ func (r *KVClientsRepository) RemoveClient(ctx context.Context, clientId string)
 			return []SetValueUnlockedCommand{}
 		}, func() []string {
 			if outdatedKeys != nil {
-				return *outdatedKeys
+				res := make([]string, len(*outdatedKeys))
+				for i, v := range *outdatedKeys {
+					res[i] = KEY_CLIENT_KEY_PREFIX + v
+				}
+				return res
 			}
 			return nil
 		})

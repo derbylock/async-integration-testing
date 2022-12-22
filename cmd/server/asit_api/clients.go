@@ -40,7 +40,7 @@ func (c *ClientsAPIController) InitRoutes(pathPrefix string, router *httprouter.
 
 func (c *ClientsAPIController) GetAllClientsHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	allClients, err := c.clientsRepository.GetAllClients(r.Context())
-	srv.WriteJsonProtoMessageOrError(w, &asit.ClientList{Clients: allClients}, err)
+	srv.WriteProtoArrayJsonMessageOrError(w, allClients, err)
 }
 
 func (c *ClientsAPIController) AddClientHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -58,7 +58,7 @@ func (c *ClientsAPIController) AddClientHandler(w http.ResponseWriter, r *http.R
 	client.Id = newId.String()
 	client.LastUpdated = timestamppb.New(time.Now())
 	err = c.clientsRepository.SetClient(r.Context(), &client)
-	srv.WriteJsonProtoMessageOrError(w, &client, err)
+	srv.WriteProtoJsonMessageOrError(w, &client, err)
 }
 
 func (c *ClientsAPIController) GetClientHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -68,7 +68,7 @@ func (c *ClientsAPIController) GetClientHandler(w http.ResponseWriter, r *http.R
 		srvErrors.SendEntityNotFound(w)
 		return
 	}
-	srv.WriteJsonProtoMessageOrError(w, client, err)
+	srv.WriteProtoJsonMessageOrError(w, client, err)
 }
 
 func (c *ClientsAPIController) DeleteClientHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -102,16 +102,16 @@ func (c *ClientsAPIController) UpdateClientHandler(w http.ResponseWriter, r *htt
 
 	client.ClientProperties = newClient.ClientProperties
 	c.clientsRepository.SetClient(r.Context(), client)
-	srv.WriteJsonProtoMessageOrError(w, &client, err)
+	srv.WriteProtoJsonMessageOrError(w, client, err)
 }
 
 func (c *ClientsAPIController) GetAllClientKeysHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	clientId := params.ByName("clientId")
 	allKeys, err := c.clientsRepository.GetClientKeys(r.Context(), clientId)
 	if allKeys == nil {
-		allKeys = &asit.ClientKeys{}
+		allKeys = &asit.ClientKeys{Keys: []string{}}
 	}
-	srv.WriteJsonProtoMessageOrError(w, allKeys, err)
+	srv.WriteJsonMessageOrError(w, allKeys.Keys, err)
 }
 
 func (c *ClientsAPIController) GetClientByKeyHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -121,7 +121,7 @@ func (c *ClientsAPIController) GetClientByKeyHandler(w http.ResponseWriter, r *h
 		srvErrors.SendEntityNotFound(w)
 		return
 	}
-	srv.WriteJsonProtoMessageOrError(w, client, err)
+	srv.WriteProtoJsonMessageOrError(w, client, err)
 }
 
 func (c *ClientsAPIController) AddClientKeyHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -136,10 +136,15 @@ func (c *ClientsAPIController) AddClientKeyHandler(w http.ResponseWriter, r *htt
 		return
 	}
 	err := c.clientsRepository.AddClientKey(r.Context(), client.Id, key)
-	if _, isConflictError := errors.Unwrap(err).(*db.NonUniqueClientKeyError); isConflictError {
+	switch errors.Unwrap(err).(type) {
+	case *db.NonUniqueClientKeyError:
 		srvErrors.SendConflictError(w, err)
 		return
+	case *db.NotFoundClientByIdError:
+		srvErrors.SendEntityNotFound(w)
+		return
 	}
+
 	srv.WriteNoContentOrError(w, err)
 }
 

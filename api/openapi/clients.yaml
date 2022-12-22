@@ -1,0 +1,345 @@
+openapi: 3.0.3
+info:
+    description: |-
+        # ASIT Client API
+        API to work with ASIT clients
+        It allows CRUD for clients. Additionally clients could be associted with unique keys vi client_keys API
+    termsOfService: http://swagger.io/terms/
+    title: ASIT Client API
+    version: 1.0.0
+servers:
+    - description: localhost ASIT server
+      url: http://localhost:9580/asit/api/v1
+tags:
+    - description: Operations with clients
+      name: clients
+    - description: Operations with client keys
+      name: clientKeys
+paths:
+  /clients:
+    get:
+      description: Retrieve the list of clients (without clientProperties)
+      operationId: getAllClients
+      tags:
+        - clients
+      responses:
+        "200":
+          description: "Success"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClientHead'
+              example:
+                - id: ef9e2213-8138-11ed-8277-f80dac3b7163
+                  name: Test
+                  lastUpdated: 2022-12-22T11:31:18.016493416Z
+                - id: 405820f6-81f4-11ed-ad2c-f80dac3b7163
+                  name: Test2
+                  lastUpdated: 2022-12-22T12:29:16.988659311Z
+    post:
+      description: Creates new client with the specified name and client properties
+      operationId: createClient
+      tags:
+        - clients
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Client'
+            example:
+              name: Test2
+              lastUpdated: 2022-12-22T12:29:16.988659311Z
+              clientProperties:
+                asit.testContentAPI: "true"
+      responses:
+        "200":
+          description: "Success, response contains created client"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+  /clients/{clientId}:
+    get:
+      description: Get client info
+      operationId: getClient
+      tags:
+        - clients
+      parameters:
+        - $ref: '#/components/parameters/clientId'
+      responses:
+        "200":
+          description: "Success"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+              example:
+                id: 405820f6-81f4-11ed-ad2c-f80dac3b7163
+                name: Test2
+                lastUpdated: 2022-12-22T12:29:16.988659311Z
+                clientProperties:
+                  asit.testContentAPI: "true"
+                  asit.testContentAPI.cases.accounting: "true"
+        "404":
+          description: "Client not found by the specified id"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+    put:
+      description: Updates client with the specified client properties
+      operationId: updateClient
+      tags:
+        - clients
+      parameters:
+        - $ref: '#/components/parameters/clientId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientOnlyClientProperties'
+      responses:
+        "200":
+          description: "Success, response contains created client"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+              example:
+                id: 405820f6-81f4-11ed-ad2c-f80dac3b7163
+                name: Test2
+                lastUpdated: 2022-12-22T12:29:16.988659311Z
+                clientProperties:
+                  asit.testContentAPI: "true"
+                  asit.testContentAPI.cases.accounting: "true"
+        "404":
+          description: "Client not found by the specified id"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+    delete:
+      description: Delete client
+      operationId: deleteClient
+      tags:
+        - clients
+      parameters:
+        - $ref: '#/components/parameters/clientId'
+      responses:
+        "204":
+          description: "Success"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+        "404":
+          description: "Client not found by the specified id"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+  /clients/{clientId}/keys:
+    get:
+      description: Get client keys
+      operationId: getClientKeys
+      tags:
+        - clientKeys
+      parameters:
+        - $ref: '#/components/parameters/clientId'
+      responses:
+        "200":
+          description: "Success"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example:
+                - orders-api:client-token:abc123-qwer456
+  /client_keys/{clientKey}:
+    post:
+      description: Add client key
+      operationId: Add client key
+      tags:
+        - clientKeys
+      parameters:
+        - $ref: '#/components/parameters/clientKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientKeyClient'
+      responses:
+        "204":
+          description: "Success"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+        "404":
+          description: "Client with the specified id not found"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+        "409":
+          description: "The specified clientKey is already associated with another client and can't be associated with the specified client"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+    get:
+      description: Get client info by client key
+      operationId: getClientByClientKey
+      tags:
+        - clientKeys
+      parameters:
+        - $ref: '#/components/parameters/clientKey'
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+              example:
+                id: 405820f6-81f4-11ed-ad2c-f80dac3b7163
+                name: Test2
+                lastUpdated: 2022-12-22T12:29:16.988659311Z
+                clientProperties:
+                  asit.testContentAPI: "true"
+                  asit.testContentAPI.cases.accounting: "true"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+        "404":
+          description: "Client for the specified key not found"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+    delete:
+      description: Delete client key
+      operationId: deleteClientKey
+      tags:
+        - clients
+      parameters:
+        - $ref: '#/components/parameters/clientKey'
+      responses:
+        "204":
+          description: "Success, even if key has not been found"
+          headers:
+            X-ASIT-RequestId:
+              $ref: '#/components/headers/X-ASIT-REQUESTID'
+components:
+  headers:
+    X-ASIT-REQUESTID:
+      schema:
+        type: string
+      required: true
+      description: Request's id set by ASIT server. It allows to check if the response is from the asit server, and not from some middleware. It additionally could be kept in client logs to check ASIT logs for error details
+      example: 03727280-2adc-4f5c-93f3-ae4027d94a9f-19
+  parameters:
+    asitRequestId:
+      in: header
+      name: X-ASIT-RequestId
+      description: The value that will be logged in ASIT server logs to identigy client request
+      required: true
+      schema:
+        type: string
+      example: 405820f6-81f4-11ed-ad2c-f80dac3b7163
+    clientId:
+      in: path
+      name: clientId
+      required: true
+      schema:
+        type: string
+      example: 405820f6-81f4-11ed-ad2c-f80dac3b7163
+    clientKey:
+      in: path
+      name: clientKey
+      required: true
+      schema:
+        type: string
+        maxLength: 1024
+      example: 405820f6-81f4-11ed-ad2c-f80dac3b7163
+  schemas:
+    ClientHead:
+      description: Client information without details
+      type: object
+      properties:
+        id:
+          type: string
+          description: Client's ID
+          readOnly: true
+        name:
+          type: string
+          description: Client's name
+        lastUpdated:
+          type: string
+          format: date-time
+      required:
+        - id
+    Client:
+      description: Client information without details
+      type: object
+      properties:
+        id:
+          type: string
+          description: Client's ID
+          readOnly: true
+        name:
+          type: string
+          description: Client's name
+        clientProperties:
+          type: object
+          description: Map of client's additional properties
+          additionalProperties:
+            type: string
+          example:
+            asit.testContentAPI: "true"
+        lastUpdated:
+          type: string
+          format: date-time
+      required:
+        - id
+      example:
+        id: 405820f6-81f4-11ed-ad2c-f80dac3b7163
+        name: Test2
+        lastUpdated: 2022-12-22T12:29:16.988659311Z
+        clientProperties:
+          asit.testContentAPI: "true"
+    ClientOnlyClientProperties:
+      description: Client information without details
+      type: object
+      properties:
+        clientProperties:
+          type: object
+          description: Map of client's additional properties
+          additionalProperties:
+            type: string
+          example:
+            asit.testContentAPI: "true"
+      example:
+        clientProperties:
+          asit.testContentAPI: "true"
+          asit.testContentAPI.cases.accounting: "true"
+    ClientKeyClient:
+      description: Client structure for client key
+      type: object
+      properties:
+        id:
+          type: string
+          description: Client's ID
+      required:
+        - id
