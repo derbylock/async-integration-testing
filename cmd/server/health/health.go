@@ -5,13 +5,17 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/derbylock/async-integration-testing/cmd/server/errors"
+	"github.com/derbylock/async-integration-testing/cmd/server/servererrors"
 	"github.com/julienschmidt/httprouter"
 )
 
 type healthResponse struct {
 	Status   string `json:"status"`
 	Revision string `json:"revision"`
+}
+
+func InitAPIRoutes(pathPrefix string, router *httprouter.Router) {
+	router.GET(pathPrefix+"/health", GetHealthRoute)
 }
 
 func GetHealthRoute(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -21,6 +25,6 @@ func GetHealthRoute(w http.ResponseWriter, r *http.Request, _ httprouter.Params)
 		Revision: revision}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		errors.SendInternalError(w, err)
+		servererrors.SendInternalError(w, err)
 	}
 }

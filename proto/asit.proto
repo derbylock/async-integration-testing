@@ -11,8 +11,8 @@ message ClientList {
 message Client {
   string id = 1;
   string name = 2;
-  google.protobuf.Timestamp last_updated = 3;
-  map<string, string> clientproperties = 4;
+  google.protobuf.Timestamp lastUpdated = 3;
+  map<string, string> clientProperties = 4;
 }
 
 message TestCase {
@@ -57,7 +57,7 @@ message TestRun {
   TestRunStatus status = 3;
   TestState state = 4;
   string statusDescription = 5;
-  google.protobuf.Timestamp last_updated = 6;
+  google.protobuf.Timestamp lastUpdated = 6;
 }
 
 enum TestRunStatus {
@@ -86,7 +86,7 @@ message TestStepRun {
 
 message TestState {
   int32 currentStepIndex = 1;
-  map<string, string> clientproperties = 2;
+  map<string, string> clientProperties = 2;
   repeated TestStepRun stepRuns = 3;
   map<string, string> data = 4;
 }

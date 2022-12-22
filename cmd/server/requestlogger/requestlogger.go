@@ -9,8 +9,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
+	"github.com/derbylock/async-integration-testing/cmd/server/servererrors"
+	"github.com/derbylock/async-integration-testing/cmd/server/stringutils"
 	"github.com/google/uuid"
 )
 
@@ -19,22 +20,21 @@ type RequestLoggingKey struct {
 }
 
 type LogRecord struct {
-	Type       string `json:"type"`
-	RequestId  string `json:"rid"`
-	RemoteAddr string `json:"raddr"`
-	Time       string `json:"time"`
-	Url        string `json:"url"`
-	Path       string `json:"path"`
-	Host       string `json:"host"`
-	Method     string `json:"method"`
-	Proto      string `json:"proto"`
-	Status     int    `json:"status"`
-	Written    int64  `json:"written"`
-	Referer    string `json:"ref"`
-	UserAgent  string `json:"uag"`
+	Type       string `json:"type,omitempty"`
+	RequestId  string `json:"rid,omitempty"`
+	RemoteAddr string `json:"raddr,omitempty"`
+	Time       string `json:"time,omitempty"`
+	Url        string `json:"url,omitempty"`
+	Path       string `json:"path,omitempty"`
+	Host       string `json:"host,omitempty"`
+	Method     string `json:"method,omitempty"`
+	Proto      string `json:"proto,omitempty"`
+	Status     int    `json:"status,omitempty"`
+	Written    int64  `json:"written,omitempty"`
+	Referer    string `json:"ref,omitempty"`
+	UserAgent  string `json:"uag,omitempty"`
+	Error      string `json:"err,omitempty"`
 }
-
-const RequestIdHeaderName = "X-ASIT-REQUESTID"
 
 var requestCounter uint64
 var RequestIdLoggingKey = RequestLoggingKey{Name: "rid"}
@@ -43,7 +43,7 @@ var baseRequestIdPrefix = uuid.New().String()
 func Logger(out io.Writer, h http.Handler) http.Handler {
 	logger := log.New(out, "", 0)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestId := r.Header.Get(RequestIdHeaderName)
+		requestId := r.Header.Get(servererrors.RequestIdHeaderName)
 		if requestId == "" {
 			atomicId := atomic.AddUint64(&requestCounter, 1)
 			requestId = fmt.Sprintf("%s-%d", baseRequestIdPrefix, atomicId)
@@ -61,15 +61,16 @@ func Logger(out io.Writer, h http.Handler) http.Handler {
 			RequestId:  requestId,
 			RemoteAddr: addr,
 			Time:       time.Now().Format(time.RFC3339),
-			Url:        trunc(r.URL.RequestURI()),
-			Path:       trunc(r.URL.Path),
-			Host:       trunc(r.Host),
-			Method:     trunc(r.Method),
-			Proto:      trunc(r.Proto),
+			Url:        trunc(r.URL.RequestURI(), 256),
+			Path:       trunc(r.URL.Path, 256),
+			Host:       trunc(r.Host, 128),
+			Method:     trunc(r.Method, 16),
+			Proto:      trunc(r.Proto, 16),
 			Status:     o.status,
 			Written:    o.written,
-			Referer:    trunc(r.Referer()),
-			UserAgent:  trunc(r.UserAgent()),
+			Referer:    trunc(r.Referer(), 256),
+			UserAgent:  trunc(r.UserAgent(), 256),
+			Error:      o.Header().Get(servererrors.ErrorHeaderName),
 		}
 
 		jsonBytes, err := json.Marshal(record)
@@ -90,7 +91,7 @@ type responseObserver struct {
 }
 
 func (o *responseObserver) Write(p []byte) (n int, err error) {
-	o.ResponseWriter.Header().Set(RequestIdHeaderName, o.requestId)
+	o.ResponseWriter.Header().Set(servererrors.RequestIdHeaderName, o.requestId)
 	if !o.wroteHeader {
 		o.WriteHeader(http.StatusOK)
 	}
@@ -100,7 +101,7 @@ func (o *responseObserver) Write(p []byte) (n int, err error) {
 }
 
 func (o *responseObserver) WriteHeader(code int) {
-	o.ResponseWriter.Header().Set(RequestIdHeaderName, o.requestId)
+	o.ResponseWriter.Header().Set(servererrors.RequestIdHeaderName, o.requestId)
 	o.ResponseWriter.WriteHeader(code)
 	if o.wroteHeader {
 		return
@@ -109,15 +110,6 @@ func (o *responseObserver) WriteHeader(code int) {
 	o.status = code
 }
 
-func trunc(str string) string {
-	return truncateStart(str, 256, "...")
-}
-
-func truncateStart(str string, length int, omission string) string {
-	r := []rune(str)
-	sLen := len(r)
-	if length >= sLen {
-		return str
-	}
-	return string(omission + string(r[len(r)-length+utf8.RuneCountInString(omission):]))
+func trunc(str string, maxlen int) string {
+	return stringutils.TruncateStart(str, maxlen, "...")
 }

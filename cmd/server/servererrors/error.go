@@ -1,10 +1,12 @@
-package errors
+package servererrors
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 )
+
+const RequestIdHeaderName = "X-ASIT-REQUESTID"
+const ErrorHeaderName = "X-ASIT-ERROR"
 
 type errorJSON struct {
 	ErrorMessage string `json:"message"`
@@ -25,16 +27,26 @@ func RenderError(w http.ResponseWriter, message string, statusCode int) {
 }
 
 func SendInternalError(w http.ResponseWriter, err error) {
-	log.Println(err)
+	w.Header().Set(ErrorHeaderName, err.Error())
 	w.Header().Set("Connection", "close")
-	w.WriteHeader(http.StatusInternalServerError)
+	w.WriteHeader(http.StatusServiceUnavailable)
 }
 
 func SendInvalidJSON(w http.ResponseWriter, err error) {
-	log.Println(err)
 	w.WriteHeader(http.StatusBadRequest)
 }
 
 func SendBadRequest(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusBadRequest)
+}
+
+func SendEntityNotFound(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusNotFound)
+}
+
+func SendConflictError(w http.ResponseWriter, err error) {
+	if err != nil {
+		w.Header().Set(ErrorHeaderName, err.Error())
+	}
+	w.WriteHeader(http.StatusConflict)
 }

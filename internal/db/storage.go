@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/go-redis/redis/v9"
+	"google.golang.org/protobuf/proto"
 )
 
 const maxRetries = 10
@@ -14,7 +15,12 @@ const maxRetries = 10
 // with the key being a string and the value being any Go interface{}.
 type SetValueCommand struct {
 	key     string
-	updater func(oldValue interface{}) (interface{}, error)
+	updater func(oldValue func(proto.Message) (bool, error)) (bool, proto.Message, error)
+}
+
+type SetValueUnlockedCommand struct {
+	key      string
+	newValue proto.Message
 }
 
 type Storage interface {
@@ -22,13 +28,13 @@ type Storage interface {
 	// The implementation automatically marshalls the value.
 	// The marshalling format depends on the implementation. It can be JSON, gob etc.
 	// The key must not be "" and the value must not be nil.
-	Set(ctx context.Context, k string, v interface{}) error
+	Set(ctx context.Context, k string, v proto.Message) error
 
 	// Updates multiple values specified by SetValueCommand, deleteKeys and afterRemovalKeysSupplier atomically
 	// Deletes keys sepcified in deleteKeys
-	// If keys used SetValueCommand and deleteKeys not changed during update, removes all keys provided by the afterRemovalKeys func
-	// Not that afterRemovalKeys will be removed even if values with the same keys changed/set/removed during the SetValueCommand, deleteKeys processing
-	SetAndDeleteAtomically(ctx context.Context, sets []SetValueCommand, deleteKeys []string, afterRemovalKeysSupplier func() []string) error
+	// If keys used lockedSets and lockedDeleteKeys not changed during update, rocesses all commands provided by the unlockedSets func
+	// Not that unlockedSets will be processed even if values with the same keys changed/set/removed during the lockedSets, lockedDeleteKeys processing
+	SetAndDeleteAtomically(ctx context.Context, lockedSets []SetValueCommand, lockedDeleteKeys []string, unlockedSets func() []SetValueUnlockedCommand, unlockedDeleteKeys func() []string) error
 
 	// Get retrieves the value for the given key.
 	// The implementation automatically unmarshalls the value.
@@ -39,7 +45,7 @@ type Storage interface {
 	// that the passed pointer points to with the values of the retrieved object's values.
 	// If no value is found it returns (false, nil).
 	// The key must not be "" and the pointer must not be nil.
-	Get(ctx context.Context, k string, v interface{}) (found bool, err error)
+	Get(ctx context.Context, k string, v proto.Message) (found bool, err error)
 
 	// Delete deletes the stored value for the given key.
 	// Deleting a non-existing key-value pair does NOT lead to an error.
@@ -63,8 +69,8 @@ type Storage interface {
 }
 
 type StorageCodec interface {
-	Marshal(v interface{}) ([]byte, error)
-	Unmarshal(data []byte, v interface{}) error
+	Marshal(v proto.Message) ([]byte, error)
+	Unmarshal(data []byte, v proto.Message) error
 }
 
 type RedisStorage struct {
@@ -76,7 +82,7 @@ func NewRedisStorage(client redis.UniversalClient, codec StorageCodec) *RedisSto
 	return &RedisStorage{client: client, codec: codec}
 }
 
-func (s *RedisStorage) Set(ctx context.Context, k string, v interface{}) error {
+func (s *RedisStorage) Set(ctx context.Context, k string, v proto.Message) error {
 	bytes, err := s.codec.Marshal(v)
 	if err != nil {
 		return err
@@ -85,8 +91,12 @@ func (s *RedisStorage) Set(ctx context.Context, k string, v interface{}) error {
 	return nil
 }
 
-func (s *RedisStorage) Get(ctx context.Context, k string, v interface{}) (found bool, err error) {
+func (s *RedisStorage) Get(ctx context.Context, k string, v proto.Message) (found bool, err error) {
 	bytes, err := s.client.Get(ctx, k).Bytes()
+	if err == redis.Nil {
+		err = nil
+		bytes = nil
+	}
 	if err != nil {
 		return false, err
 	}
@@ -106,52 +116,69 @@ func (s *RedisStorage) Close() error {
 	return s.client.Close()
 }
 
-func (s *RedisStorage) SetAndDeleteAtomically(ctx context.Context, sets []SetValueCommand, deleteKeys []string, afterRemovalKeysSupplier func() []string) error {
-	deleteKeysCount := len(deleteKeys)
-	setsKeysCount := len(deleteKeys)
+func (s *RedisStorage) SetAndDeleteAtomically(ctx context.Context, lockedSets []SetValueCommand, lockedDeleteKeys []string, unlockedSets func() []SetValueUnlockedCommand, unlockedDeleteKeys func() []string) error {
+	deleteKeysCount := len(lockedDeleteKeys)
+	setsKeysCount := len(lockedSets)
 	allKeys := make([]string, deleteKeysCount+setsKeysCount)
 	for i := 0; i < deleteKeysCount; i++ {
-		allKeys[i] = deleteKeys[i]
+		allKeys[i] = lockedDeleteKeys[i]
 	}
 
 	for i := 0; i < setsKeysCount; i++ {
-		allKeys[deleteKeysCount+i] = sets[i].key
+		allKeys[deleteKeysCount+i] = lockedSets[i].key
 	}
 
 	txf := func(tx *redis.Tx) error {
-		oldVals := make([]interface{}, len(sets))
-		for i, set := range sets {
+		oldBytes := make([][]byte, len(lockedSets))
+		for i, set := range lockedSets {
 			bytes, err := tx.Get(ctx, set.key).Bytes()
+			if err == redis.Nil {
+				err = nil
+				bytes = nil
+			}
 			if err != nil {
 				return err
 			}
-			if bytes == nil {
-				oldVals[i] = nil
-				continue
-			}
-
-			err = s.codec.Unmarshal(bytes, oldVals[i])
-			if err != nil {
-				return nil
-			}
+			oldBytes[i] = bytes
 		}
 		// Operation is commited only if the watched keys remain unchanged.
 		_, err := tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-			for i, set := range sets {
-				newVal, errx := set.updater(oldVals[i])
+			for i, set := range lockedSets {
+				requiresUpdate, newVal, errx := set.updater(func(m proto.Message) (bool, error) {
+					oldBytesCurrent := oldBytes[i]
+					if oldBytesCurrent == nil {
+						return false, nil
+					}
+					return true, proto.Unmarshal(oldBytesCurrent, m)
+				})
 				if errx != nil {
 					return errx
 				}
-				if newVal == nil {
-					pipe.Del(ctx, set.key)
-					continue
+				if requiresUpdate {
+					if newVal == nil {
+						pipe.Del(ctx, set.key)
+						continue
+					}
+					newValBytes, err := s.codec.Marshal(newVal)
+					if err != nil {
+						return err
+					}
+					pipe.Set(ctx, set.key, newValBytes, 0)
 				}
-				pipe.Set(ctx, set.key, newVal, 0)
 			}
-			for _, deleteKey := range deleteKeys {
+			for _, deleteKey := range lockedDeleteKeys {
 				pipe.Del(ctx, deleteKey)
 			}
-			afterRemovalKeys := afterRemovalKeysSupplier()
+			sets := unlockedSets()
+			for _, set := range sets {
+				newValBytes, err := s.codec.Marshal(set.newValue)
+				if err != nil {
+					return err
+				}
+				pipe.Set(ctx, set.key, newValBytes, 0)
+			}
+
+			afterRemovalKeys := unlockedDeleteKeys()
 			for _, deleteKey := range afterRemovalKeys {
 				pipe.Del(ctx, deleteKey)
 			}
