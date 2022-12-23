@@ -52,7 +52,7 @@ func WriteProtoArrayJsonMessageOrError[T proto.Message](w http.ResponseWriter, r
 	}
 
 	for i, resp := range resps {
-		if i>0 {
+		if i > 0 {
 			_, err = w.Write([]byte(","))
 			if err != nil {
 				servererrors.SendInternalError(w, err)

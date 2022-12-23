@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
@@ -14,6 +15,7 @@ import (
 	"github.com/derbylock/async-integration-testing/cmd/server/health"
 	"github.com/derbylock/async-integration-testing/cmd/server/requestlogger"
 	"github.com/derbylock/async-integration-testing/internal/db"
+	"github.com/go-redis/redis/v9"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -56,4 +58,15 @@ func (s *Server) ListenAndServe() error {
 	}
 	httpServer.SetKeepAlivesEnabled(true)
 	return httpServer.ListenAndServe()
+}
+
+func NewRedisBackedServer(redisAddrs string, redisPassword string) *Server {
+	redisClient := redis.NewUniversalClient(&redis.UniversalOptions{
+		Addrs:    strings.Split(redisAddrs, ","),
+		Password: redisPassword,
+	})
+	defer redisClient.Close()
+
+	storage := db.NewRedisStorage(redisClient, db.PROTO_CODEC)
+	return NewServer(storage)
 }

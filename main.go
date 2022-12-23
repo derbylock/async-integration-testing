@@ -3,11 +3,8 @@ package main
 import (
 	"log"
 	"os"
-	"strings"
 
 	"github.com/derbylock/async-integration-testing/cmd/server"
-	"github.com/derbylock/async-integration-testing/internal/db"
-	"github.com/go-redis/redis/v9"
 )
 
 const (
@@ -21,14 +18,7 @@ func main() {
 	redisAddrs := requireEnv(REDIS_ADDRS)
 	redisPassword := os.Getenv(REDIS_PASSWORD)
 
-	redisClient := redis.NewUniversalClient(&redis.UniversalOptions{
-		Addrs:    strings.Split(redisAddrs, ","),
-		Password: redisPassword,
-	})
-	defer redisClient.Close()
-
-	storage := db.NewRedisStorage(redisClient, db.PROTO_CODEC)
-	server := server.NewServer(storage)
+	server := server.NewRedisBackedServer(redisAddrs, redisPassword)
 	log.Fatal(server.ListenAndServe())
 }
 
